@@ -1,6 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <string.h>
+#include <dirent.h>
+
 
 #include "eventlist.h"
 
@@ -156,14 +161,14 @@ int ems_reserve(unsigned int event_id, size_t num_seats, size_t* xs, size_t* ys)
   return 0;
 }
 
-int ems_show(unsigned int event_id) {
+int ems_show(unsigned int event_id, int fd) {
   if (event_list == NULL) {
     fprintf(stderr, "EMS state must be initialized\n");
     return 1;
   }
 
   struct Event* event = get_event_with_delay(event_id);
-
+ 
   if (event == NULL) {
     fprintf(stderr, "Event not found\n");
     return 1;
@@ -172,34 +177,39 @@ int ems_show(unsigned int event_id) {
   for (size_t i = 1; i <= event->rows; i++) {
     for (size_t j = 1; j <= event->cols; j++) {
       unsigned int* seat = get_seat_with_delay(event, seat_index(event, i, j));
-      printf("%u", *seat);
+      char seat_str[sizeof(unsigned int)]; // Adjust the size based on your maximum integer size
+      snprintf(seat_str, sizeof(seat_str), "%u", *seat);
+      write(fd, seat_str, sizeof(char));
 
       if (j < event->cols) {
-        printf(" ");
+        write(fd, " ", sizeof(char));
       }
     }
 
-    printf("\n");
+    write(fd, "\n", sizeof(char));
   }
 
   return 0;
 }
 
-int ems_list_events() {
+int ems_list_events(int fd) {
   if (event_list == NULL) {
     fprintf(stderr, "EMS state must be initialized\n");
     return 1;
   }
 
   if (event_list->head == NULL) {
-    printf("No events\n");
+    write(fd, "No events\n", sizeof("No events\n"));
     return 0;
   }
 
   struct ListNode* current = event_list->head;
   while (current != NULL) {
-    printf("Event: ");
-    printf("%u\n", (current->event)->id);
+    write(fd, "Event: ", sizeof("Event: "));
+    char event_id[sizeof(unsigned int)];
+    snprintf(event_id, sizeof(event_id), "%u", (current->event)->id);
+    write(fd, event_id, sizeof(event_id));
+    
     current = current->next;
   }
 
