@@ -123,7 +123,7 @@ void execute(char dirp_name[128]){
 
 int main(int argc, char *argv[]) {
   unsigned int state_access_delay_ms = STATE_ACCESS_DELAY_MS;
-  int max_proc = atoi(argv[2]), n_proc = 0;
+  int max_proc = atoi(argv[2]), n_proc = 0, status;
   char dirp_name[128];
   DIR *dirp;
   struct dirent *dp;
@@ -156,12 +156,12 @@ int main(int argc, char *argv[]) {
   while ((dp = readdir(dirp))){
   if (strcmp(dp->d_name, ".") != 0 && strcmp(dp->d_name, "..") != 0){
     if (n_proc == max_proc){
-      pid = wait(NULL);
+      pid = wait(&status);
       if (pid == -1){
         perror("Error waiting for child process");
         exit(-1);
       }
-      printf("O processo filho com pid: %d terminou.\n", pid);
+      printf("O processo com pid: %d terminou com status: %d.\n", pid, status);
       n_proc--;
     }
     pid = fork();
@@ -183,8 +183,18 @@ int main(int argc, char *argv[]) {
     }
   }
   }
+  
+  while (n_proc > 0){
+    pid = wait(&status);
+      if (pid == -1){
+        perror("Error waiting for child process");
+        exit(-1);
+      }
+      printf("O processo com pid: %d terminou com status: %d.\n", pid, status);
+      n_proc--;
+    }
+  
   ems_terminate();
   closedir(dirp);
-  printf("O processo pai com pid: %d terminou.\n", pid);
   return 0;
 }
