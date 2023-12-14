@@ -179,14 +179,14 @@ int ems_show(unsigned int event_id, int fd) {
       unsigned int* seat = get_seat_with_delay(event, seat_index(event, i, j));
       char seat_str[sizeof(unsigned int)]; // Adjust the size based on your maximum integer size
       snprintf(seat_str, sizeof(seat_str), "%u", *seat);
-      write(fd, seat_str, sizeof(char));
+      write(fd, seat_str, 1);
 
       if (j < event->cols) {
-        write(fd, " ", sizeof(char));
+        write(fd, " ", 1);
       }
     }
 
-    write(fd, "\n", sizeof(char));
+    write(fd, "\n", 1);
   }
 
   return 0;
@@ -199,16 +199,17 @@ int ems_list_events(int fd) {
   }
 
   if (event_list->head == NULL) {
-    write(fd, "No events\n", sizeof("No events\n"));
+    write(fd, "No events\n", 10);
     return 0;
   }
 
   struct ListNode* current = event_list->head;
   while (current != NULL) {
-    write(fd, "Event: ", sizeof("Event: "));
+    write(fd, "Event: ", 7);
     char event_id[sizeof(unsigned int)];
     snprintf(event_id, sizeof(event_id), "%u", (current->event)->id);
-    write(fd, event_id, sizeof(event_id));
+    write(fd, event_id, 1);
+    write(fd, "\n", 1);
     
     current = current->next;
   }
