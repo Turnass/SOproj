@@ -1,8 +1,8 @@
-#ifndef EVENT_LIST_H
-#define EVENT_LIST_H
+#ifndef SERVER_EVENT_LIST_H
+#define SERVER_EVENT_LIST_H
 
-#include <stddef.h>
 #include <pthread.h>
+#include <stddef.h>
 
 struct Event {
   unsigned int id;            /// Event id
@@ -11,7 +11,8 @@ struct Event {
   size_t cols;  /// Number of columns.
   size_t rows;  /// Number of rows.
 
-  unsigned int* data;  /// Array of size rows * cols with the reservations for each seat.
+  unsigned int* data;     /// Array of size rows * cols with the reservations for each seat.
+  pthread_mutex_t mutex;  // Mutex to protect the event
 };
 
 struct ListNode {
@@ -21,9 +22,9 @@ struct ListNode {
 
 // Linked list structure
 struct EventList {
-  pthread_mutex_t mutex;
   struct ListNode* head;  // Head of the list
   struct ListNode* tail;  // Tail of the list
+  pthread_rwlock_t rwl;   // Mutex to protect the list
 };
 
 /// Creates a new event list.
@@ -44,7 +45,9 @@ void free_list(struct EventList* list);
 /// Retrieves an event in the list.
 /// @param list Event list to be searched
 /// @param event_id Event id.
+/// @param from First node to be searched.
+/// @param to Last node to be searched.
 /// @return Pointer to the event if found, NULL otherwise.
-struct Event* get_event(struct EventList* list, unsigned int event_id);
+struct Event* get_event(struct EventList* list, unsigned int event_id, struct ListNode* from, struct ListNode* to);
 
-#endif  // EVENT_LIST_H
+#endif  // SERVER_EVENT_LIST_H

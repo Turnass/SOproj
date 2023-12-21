@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <dirent.h>
+#include <pthread.h>
 
 
 #include "eventlist.h"
@@ -148,7 +149,6 @@ int ems_reserve(unsigned int event_id, size_t num_seats, size_t* xs, size_t* ys)
 
     *get_seat_with_delay(event, seat_index(event, row, col)) = reservation_id;
   }
-
   // If the reservation was not successful, free the seats that were reserved.
   if (i < num_seats) {
     event->reservations--;
@@ -173,7 +173,7 @@ int ems_show(unsigned int event_id, int fd) {
     fprintf(stderr, "Event not found\n");
     return 1;
   }
-
+  pthread_mutex_lock(&(event_list->mutex));
   for (size_t i = 1; i <= event->rows; i++) {
     for (size_t j = 1; j <= event->cols; j++) {
       unsigned int* seat = get_seat_with_delay(event, seat_index(event, i, j));
@@ -188,7 +188,7 @@ int ems_show(unsigned int event_id, int fd) {
 
     write(fd, "\n", 1);
   }
-
+  pthread_mutex_unlock(&(event_list->mutex));
   return 0;
 }
 
@@ -204,6 +204,7 @@ int ems_list_events(int fd) {
   }
 
   struct ListNode* current = event_list->head;
+  pthread_mutex_lock(&(event_list->mutex));
   while (current != NULL) {
     write(fd, "Event: ", 7);
     char event_id[sizeof(unsigned int)];
@@ -213,7 +214,7 @@ int ems_list_events(int fd) {
     
     current = current->next;
   }
-
+  pthread_mutex_unlock(&(event_list->mutex));
   return 0;
 }
 

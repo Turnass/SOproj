@@ -1,12 +1,15 @@
 #include "eventlist.h"
 
-#include <stdlib.h>
 #include <pthread.h>
+#include <stdlib.h>
 
 struct EventList* create_list() {
   struct EventList* list = (struct EventList*)malloc(sizeof(struct EventList));
-  pthread_mutex_init(&(list->mutex), NULL);
   if (!list) return NULL;
+  if (pthread_rwlock_init(&list->rwl, NULL) != 0) {
+    free(list);
+    return NULL;
+  }
   list->head = NULL;
   list->tail = NULL;
   return list;
@@ -20,7 +23,7 @@ int append_to_list(struct EventList* list, struct Event* event) {
 
   new_node->event = event;
   new_node->next = NULL;
-  pthread_mutex_lock(&(list->mutex));
+
   if (list->head == NULL) {
     list->head = new_node;
     list->tail = new_node;
@@ -28,13 +31,12 @@ int append_to_list(struct EventList* list, struct Event* event) {
     list->tail->next = new_node;
     list->tail = new_node;
   }
-  pthread_mutex_unlock(&(list->mutex));
+
   return 0;
 }
 
 static void free_event(struct Event* event) {
   if (!event) return;
-
   free(event->data);
   free(event);
 }
@@ -51,20 +53,22 @@ void free_list(struct EventList* list) {
     free(temp);
   }
 
-  pthread_mutex_destroy(&(list->mutex));
   free(list);
 }
 
-struct Event* get_event(struct EventList* list, unsigned int event_id) {
-  if (!list) return NULL;
+struct Event* get_event(struct EventList* list, unsigned int event_id, struct ListNode* from, struct ListNode* to) {
+  if (!list || !from || !to) return NULL;
+  struct ListNode* current = from;
 
-  struct ListNode* current = list->head;
-  while (current) {
-    struct Event* event = current->event;
-    if (event->id == event_id) {
-      return event;
+  while (1) {
+    if (current->event->id == event_id) {
+      return current->event;
     }
+
+    if (current == to) {
+      return NULL;
+    }
+
     current = current->next;
   }
-  return NULL;
 }

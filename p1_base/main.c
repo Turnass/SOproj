@@ -14,14 +14,16 @@
 #include "operations.h"
 #include "parser.h"
 
+#define MAX_FILE_NAME 128
 struct thread_info
 {
-  char dirp_name[128];
+  char dirp_name[MAX_FILE_NAME];
   int max_threads;
   int fd_out;
   int id;
 };
 
+int first_open = 1;
 
 void *execute(void *args)
 {
@@ -29,18 +31,25 @@ void *execute(void *args)
   size_t num_rows, num_columns, num_coords;
   size_t xs[MAX_RESERVATION_SIZE], ys[MAX_RESERVATION_SIZE];
   int fd_in;
-  int line = 0;
+  int line = -1;
   int command;
+  unsigned int wait_num = 0;
+  int *barrier_flag;
 
   struct thread_info *thread = (struct thread_info *)args;
 
-  fd_in = open(thread->dirp_name, O_RDONLY);
+  barrier_flag = malloc(sizeof(int));
+  *barrier_flag = 0;
+
+  if(first_open)
+    fd_in = open(thread->dirp_name, O_RDONLY);
 
   fflush(stdout);
 
   while (1)
   {
     line++;
+
     command = get_next(fd_in);
 
     switch (command)
@@ -52,7 +61,7 @@ void *execute(void *args)
         continue;
       }
 
-      if (!(line - 1) % thread->max_threads == thread->id)
+      if (line % thread->max_threads != thread->id)
       {
         break;
       }
@@ -73,7 +82,7 @@ void *execute(void *args)
         continue;
       }
 
-      if (!(line - 1) % thread->max_threads == thread->id )
+      if (line % thread->max_threads != thread->id )
       {
         break;
       }
@@ -92,11 +101,11 @@ void *execute(void *args)
         continue;
       }
 
-      if (!(line - 1) % thread->max_threads == thread->id )
+      if (line % thread->max_threads != thread->id )
       {
         break;
       }
-
+      
       if (ems_show(event_id, thread->fd_out))
       {
         fprintf(stderr, "Failed to show event\n");
@@ -106,7 +115,7 @@ void *execute(void *args)
 
     case CMD_LIST_EVENTS:
 
-      if (!(line - 1) % thread->max_threads == thread->id )
+      if (line % thread->max_threads != thread->id)
       {
         break;
       }
@@ -119,7 +128,7 @@ void *execute(void *args)
       break;
 
     case CMD_WAIT:
-      if (parse_wait(fd_in, &delay, NULL) == -1)
+      if (parse_wait(fd_in, &delay, &wait_num) == -1)
       { // thread_id is not implemented
         fprintf(stderr, "Invalid command. See HELP for usage\n");
         continue;
@@ -127,15 +136,17 @@ void *execute(void *args)
 
       if (delay > 0)
       {
-        printf("Waiting...\n");
+        if ((int)wait_num == 0 || (int)wait_num == thread->id + 1){
+        printf("Waiting... \n");
         ems_wait(delay);
+        }
       }
 
       break;
 
     case CMD_INVALID:
 
-      if (!(line - 1) % thread->max_threads == thread->id )
+      if (line % thread->max_threads != thread->id)
       {
         break;
       }
@@ -145,7 +156,7 @@ void *execute(void *args)
 
     case CMD_HELP:
 
-      if (!(line - 1) % thread->max_threads == thread->id )
+      if (line % thread->max_threads != thread->id)
       {
         break;
       }
@@ -162,14 +173,18 @@ void *execute(void *args)
 
       break;
 
-    case CMD_BARRIER: // Not implemented
+    case CMD_BARRIER:
+      *barrier_flag = 1;
+      free(thread);
+      pthread_exit(barrier_flag);
+
     case CMD_EMPTY:
       break;
 
     case EOC:
       close(fd_in);
       free(thread);
-      pthread_exit(NULL);
+      pthread_exit(barrier_flag);
     }
   }
 }
@@ -177,16 +192,19 @@ void *execute(void *args)
 int main(int argc, char *argv[])
 {
   unsigned int state_access_delay_ms = STATE_ACCESS_DELAY_MS;
-  int max_proc = atoi(argv[2]), n_proc = 0, status;
-  char dirp_name[128], f_in_name[128];
-  int i;
-  DIR *dirp;
-  struct dirent *dp;
-  struct thread_info **threads;
-  pid_t pid;
-  pthread_t tids[sizeof(pthread_t) * (unsigned int)atoi(argv[3])];
+  char dirp_name[MAX_FILE_NAME], f_in_name[MAX_FILE_NAME];
   char *dot_pointer;
+  DIR *dirp;
+  struct thread_info **threads;
+  struct dirent *dp;
+  pid_t pid;
+  int max_proc = atoi(argv[2]), n_proc = 0, status;
+  int max_threads = atoi(argv[3]);
+  int i;
   int fd_out;
+  int *barrier_flag;
+  int aux;
+  pthread_t tids[sizeof(pthread_t) * (unsigned int)max_threads];
 
   if (argc > 4)
   {
@@ -216,7 +234,7 @@ int main(int argc, char *argv[])
 
   strcpy(dirp_name, argv[1]);
 
-  threads = malloc(sizeof(struct thread_info *) * (unsigned int)atoi(argv[3]));
+  threads = malloc(sizeof(struct thread_info *) * (unsigned int)max_threads);
 
   while ((dp = readdir(dirp)))
   {
@@ -248,21 +266,35 @@ int main(int argc, char *argv[])
         strcpy(dot_pointer, ".out");
         fd_out = open(dirp_name, O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR | S_IWUSR);
 
-        for (i = 0; i < atoi(argv[3]); i++)
-        {
-          threads[i] = malloc(sizeof(struct thread_info));
+        while(1){
+          for (i = 0; i < max_threads; i++)
+          {
+            threads[i] = malloc(sizeof(struct thread_info));
 
-          threads[i]->id = i;
-          strcpy(threads[i]->dirp_name, f_in_name);
-          threads[i]->max_threads = atoi(argv[3]);
+            threads[i]->id = i;
+            
+            strcpy(threads[i]->dirp_name, f_in_name);
+            threads[i]->max_threads = max_threads;
 
-          threads[i]->fd_out = fd_out;
+            threads[i]->fd_out = fd_out;
 
-          pthread_create(&tids[i], NULL, execute, (void *)threads[i]);
+              if (pthread_create(&tids[i], NULL, execute, (void *)threads[i]) != 0) {
+                fprintf(stderr, "Error creating thread\n");
+                return EXIT_FAILURE;  
+              }
+          }
+
+          for (i = 0; i < max_threads; i++){
+            pthread_join(tids[i], (void **)&barrier_flag);
+            aux = *barrier_flag;
+            free(barrier_flag);
+          }          
+          first_open = 0;
+          
+          if(aux)
+            continue;
+          break;
         }
-
-        for (i = 0; i < atoi(argv[3]); i++)
-          pthread_join(tids[i], NULL);
 
         close(fd_out);
         exit(0);
