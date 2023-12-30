@@ -1,8 +1,40 @@
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <errno.h>
 #include "api.h"
+
+int fserv;
+int req;
+int res;
 
 int ems_setup(char const* req_pipe_path, char const* resp_pipe_path, char const* server_pipe_path) {
   //TODO: create pipes and connect to the server
-  return 1;
+  unlink(req_pipe_path);
+  unlink(resp_pipe_path);
+  if (mkfifo (req_pipe_path, 0777) < 0) return 1;
+  if (mkfifo (resp_pipe_path, 0777) < 0) return 1;
+
+  if ((fserv = open (server_pipe_path, O_WRONLY)) < 0){
+    fprintf(stderr, "server pipe failed to open\n");
+    return 1;
+  }
+  write(fserv, req_pipe_path, sizeof(req_pipe_path));
+  write(fserv, resp_pipe_path, sizeof(resp_pipe_path));
+
+  if ((req = open (req_pipe_path, O_WRONLY)) < 0){
+    fprintf(stderr, "request pipe failed to open\n");
+    return 1;
+  }
+
+  if ((res = open (resp_pipe_path, O_RDONLY)) < 0){
+    fprintf(stderr, "response pipe failed to open\n");
+    return 1;
+  }
+
+  return 0;
 }
 
 int ems_quit(void) { 
