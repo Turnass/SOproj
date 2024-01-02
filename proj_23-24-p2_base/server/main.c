@@ -5,14 +5,64 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <string.h>
 #include "session.h"
 
 #include "common/constants.h"
 #include "common/io.h"
 #include "operations.h"
 
+/*
+void *process_file()
+*/
+
+int my_func(session_id *session){
+  char OP_CODE;
+  int return_value, out_fd;
+  unsigned int event_id;
+  size_t num_rows, num_cols, num_seats, xs[MAX_RESERVATION_SIZE], ys[MAX_RESERVATION_SIZE];
+  while (1){
+      read(session->req_fd, &OP_CODE, 1);
+      printf("%c\n", OP_CODE);
+      switch (OP_CODE){
+      case '2':
+        /* pthread_exit */
+        close(session->req_fd);
+        close(session->resp_fd);
+        free(session);
+        return 0;
+      case '3':
+        read(session->req_fd, &event_id, sizeof(unsigned int));
+        read(session->req_fd, &num_rows, sizeof(size_t));
+        read(session->req_fd, &num_cols, sizeof(size_t));
+        return_value = ems_create(event_id, num_rows, num_cols);
+        write(session->resp_fd, &return_value, sizeof(int));
+        break;
+      case '4':
+        read(session->req_fd, &event_id, sizeof(unsigned int));
+        read(session->req_fd, &num_seats, sizeof(size_t));
+        read(session->req_fd, xs, sizeof(xs));
+        read(session->req_fd, ys, sizeof(ys));
+        return_value = ems_reserve(event_id, num_seats, xs, ys);
+        write(session->resp_fd, &return_value, sizeof(int));
+        break;
+      case '5':
+        read(session->req_fd, &event_id, sizeof(unsigned int));
+        printf("fd: %d\n", out_fd);
+        return_value = ems_show(session->resp_fd, event_id);
+        write(session->resp_fd, &return_value, sizeof(int));
+        break;
+      case '6':
+        read(session->req_fd, &out_fd, sizeof(out_fd));
+        return_value = ems_list_events(out_fd);
+        write(session->resp_fd, &return_value, sizeof(int));
+        break;
+      }
+    }
+}
+
 int main(int argc, char* argv[]) {
-  int fserv, session_counter;
+  int fserv, session_counter = 0;
   if (argc < 2 || argc > 3) {
     fprintf(stderr, "Usage: %s\n <pipe_path> [delay]\n", argv[0]);
     return 1;
@@ -45,11 +95,35 @@ int main(int argc, char* argv[]) {
     return 1;
   }
   
-  char path_to_client[sizeof("../client/")] = "../client/";
+  char path_to_client[sizeof("../client/") + PATH_SIZE];
+  char aux[sizeof("../client/")] = "../client/";
+  char req_path[PATH_SIZE];
+  char resp_path[PATH_SIZE];
+
   while (1) {
     //TODO: Read from pipe
-    read(fserv, sessions[session_counter]->req_path, PATH_SIZE)
+    while(session_counter == MAX_SESSIONS);
+    // pthread_create
+    strcpy(path_to_client, aux);
+    sessions[session_counter] = malloc(sizeof(session_id));
+
+    sessions[session_counter]->id = session_counter;
+    read(fserv, req_path, PATH_SIZE);
+    if ((sessions[session_counter]->req_fd = open (strcat(path_to_client, req_path), O_RDONLY)) < 0){
+    fprintf(stderr, "request pipe of session: %d, failed to open\n", session_counter);
+    return 1;
+    }
+    strcpy(path_to_client, aux);
+    read(fserv, resp_path, PATH_SIZE);
+    if ((sessions[session_counter]->resp_fd = open (strcat(path_to_client, resp_path), O_WRONLY)) < 0){
+    fprintf(stderr, "response pipe of session: %d, failed to open\n", session_counter);
+    return 1;
+    }
+    write(sessions[session_counter]->resp_fd, &session_counter, sizeof(int));
     //TODO: Write new client to the producer-consumer buffer
+    my_func(sessions[session_counter]);
+    
+    session_counter++;
     break;
   }
 

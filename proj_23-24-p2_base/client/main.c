@@ -4,7 +4,7 @@
 #include <unistd.h>
 
 #include "api.h"
-#include "common/constants.h"
+#include "../common/constants.h"
 #include "parser.h"
 
 int main(int argc, char* argv[]) {
