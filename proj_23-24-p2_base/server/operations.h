@@ -26,15 +26,15 @@ int ems_create(unsigned int event_id, size_t num_rows, size_t num_cols);
 /// @return 0 if the reservation was created successfully, 1 otherwise.
 int ems_reserve(unsigned int event_id, size_t num_seats, size_t *xs, size_t *ys);
 
-/// Prints the given event.
-/// @param resp_pipe File descriptor to print the event to.
-/// @param event_id Id of the event to print.
-/// @return 0 if the event was printed successfully, 1 otherwise.
+/// Send the output of the event to the client.
+/// @param resp_fd File descriptor to send the output through.
+/// @param event_id Id of the event to send.
+/// @return 0 if the event output was sent successfully, 1 otherwise.
 int ems_show(int resp_pipe, unsigned int event_id);
 
-/// Prints all the events.
-/// @param out_fd File descriptor to print the events to.
-/// @return 0 if the events were printed successfully, 1 otherwise.
-int ems_list_events(int out_fd);
+/// Sends the output to the client of all the events ids.
+/// @param resp_fd File descriptor to send the output through.
+/// @return 0 if the event ids were sent successfully, 1 otherwise.
+int ems_list_events(int resp_pipe);
 
 #endif  // SERVER_OPERATIONS_H

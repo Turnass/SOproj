@@ -18,12 +18,11 @@ void *process_file()
 
 int my_func(session_id *session){
   char OP_CODE;
-  int return_value, out_fd;
+  int return_value;
   unsigned int event_id;
   size_t num_rows, num_cols, num_seats, xs[MAX_RESERVATION_SIZE], ys[MAX_RESERVATION_SIZE];
   while (1){
       read(session->req_fd, &OP_CODE, 1);
-      printf("%c\n", OP_CODE);
       switch (OP_CODE){
       case '2':
         /* pthread_exit */
@@ -48,13 +47,11 @@ int my_func(session_id *session){
         break;
       case '5':
         read(session->req_fd, &event_id, sizeof(unsigned int));
-        printf("fd: %d\n", out_fd);
         return_value = ems_show(session->resp_fd, event_id);
         write(session->resp_fd, &return_value, sizeof(int));
         break;
       case '6':
-        read(session->req_fd, &out_fd, sizeof(out_fd));
-        return_value = ems_list_events(out_fd);
+        return_value = ems_list_events(session->resp_fd);
         write(session->resp_fd, &return_value, sizeof(int));
         break;
       }
