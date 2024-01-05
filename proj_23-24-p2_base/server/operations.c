@@ -4,7 +4,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "common/io.h"
+#include "../common/io.h"
 #include "eventlist.h"
 
 static struct EventList* event_list = NULL;
@@ -173,17 +173,21 @@ int ems_reserve(unsigned int event_id, size_t num_seats, size_t* xs, size_t* ys)
   return 0;
 }
 
+int its_signal = 0;
+
 int ems_show(int resp_fd, unsigned int event_id) {
   char space = ' ', new_line = '\n', end_char = '<';
   if (event_list == NULL) {
     fprintf(stderr, "EMS state must be initialized\n");
-    write(resp_fd, &end_char, 1);
+    if(its_signal == 0)
+      write(resp_fd, &end_char, 1);
     return 1;
   }
 
   if (pthread_rwlock_rdlock(&event_list->rwl) != 0) {
     fprintf(stderr, "Error locking list rwl\n");
-    write(resp_fd, &end_char, 1);
+    if(its_signal == 0)
+      write(resp_fd, &end_char, 1);
     return 1;
   }
 
@@ -193,13 +197,15 @@ int ems_show(int resp_fd, unsigned int event_id) {
 
   if (event == NULL) {
     fprintf(stderr, "Event not found\n");
-    write(resp_fd, &end_char, 1);
+    if(its_signal == 0)
+      write(resp_fd, &end_char, 1);
     return 1;
   }
 
   if (pthread_mutex_lock(&event->mutex) != 0) {
     fprintf(stderr, "Error locking mutex\n");
-    write(resp_fd, &end_char, 1);
+    if(its_signal == 0)
+      write(resp_fd, &end_char, 1);
     return 1;
   }
 
@@ -215,8 +221,8 @@ int ems_show(int resp_fd, unsigned int event_id) {
     }
     write(resp_fd, &new_line, 1);
   }
-
-  write(resp_fd, &end_char, 1);
+  if(its_signal == 0)
+    write(resp_fd, &end_char, 1);
 
   pthread_mutex_unlock(&event->mutex);
   return 0;
@@ -269,10 +275,15 @@ int ems_list_events(int resp_fd) {
 void catchSIGUSR1(){
   struct ListNode* current = event_list->head;
 
+  its_signal = 1;
+
   while (current){
-    printf("Event: %d", (current->event)->id);
+    printf("Event: %d\n", (current->event)->id);
     ems_show(STDOUT_FILENO, (current->event)->id);
+    printf("\n");
 
     current = current->next;
   }
+
+  its_signal = 0;
 }

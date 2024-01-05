@@ -11,11 +11,11 @@
 #include <pthread.h>
 #include <signal.h>
 
-#include "common/constants.h"
+#include "../common/constants.h"
 #include "common/io.h"
 #include "operations.h"
 
-
+static sigset_t signal_mask;
 int standby_sessions = 0;
 int active_threads[MAX_SESSION_COUNT * sizeof(int)];
 pthread_mutex_t session_mutex;
@@ -29,10 +29,8 @@ int process_requets(session_id session){
   unsigned int event_id;
   size_t num_rows, num_cols, num_seats, xs[MAX_RESERVATION_SIZE], ys[MAX_RESERVATION_SIZE];
   while (1){
-      pthread_sigmask();
       read(session.req_fd, &OP_CODE, 1);
       sleep(2);
-      printf("opcode : %c, id : %d\n", OP_CODE, session.id);
       switch (OP_CODE){
       case '2':
         close(session.req_fd);
@@ -72,6 +70,7 @@ void *consumer(){
   session_id session;
   int i, j;
   while (1){
+  pthread_sigmask(SIG_BLOCK, &signal_mask, NULL);
   sem_wait(&AvailableThreadsSem);
   sem_wait(&ClientReadySem);
   pthread_mutex_lock(&session_mutex);
