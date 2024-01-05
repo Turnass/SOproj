@@ -265,3 +265,14 @@ int ems_list_events(int resp_fd) {
   pthread_rwlock_unlock(&event_list->rwl);
   return 0;
 }
+
+void catchSIGUSR1(){
+  struct ListNode* current = event_list->head;
+
+  while (current){
+    printf("Event: %d", (current->event)->id);
+    ems_show(STDOUT_FILENO, (current->event)->id);
+
+    current = current->next;
+  }
+}

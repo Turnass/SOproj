@@ -37,4 +37,6 @@ int ems_show(int resp_pipe, unsigned int event_id);
 /// @return 0 if the event ids were sent successfully, 1 otherwise.
 int ems_list_events(int resp_pipe);
 
+void catchSIGUSR1();
+
 #endif  // SERVER_OPERATIONS_H

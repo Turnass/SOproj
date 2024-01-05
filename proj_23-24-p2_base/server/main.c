@@ -7,8 +7,9 @@
 #include <fcntl.h>
 #include <string.h>
 #include "session.h"
-#include <pthread.h>
 #include <semaphore.h>
+#include <pthread.h>
+#include <signal.h>
 
 #include "common/constants.h"
 #include "common/io.h"
@@ -28,6 +29,7 @@ int process_requets(session_id session){
   unsigned int event_id;
   size_t num_rows, num_cols, num_seats, xs[MAX_RESERVATION_SIZE], ys[MAX_RESERVATION_SIZE];
   while (1){
+      pthread_sigmask();
       read(session.req_fd, &OP_CODE, 1);
       sleep(2);
       printf("opcode : %c, id : %d\n", OP_CODE, session.id);
@@ -153,6 +155,7 @@ int main(int argc, char* argv[]) {
     }
 
     pthread_mutex_lock(&session_mutex);
+    signal(SIGUSR1, catchSIGUSR1);
     sessions = realloc(sessions, sizeof(session_id*) * sizeof(standby_sessions));
     sessions[standby_sessions] = malloc(sizeof(session_id));
 
