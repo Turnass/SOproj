@@ -17,7 +17,7 @@ int print_uint(int fd, unsigned int value);
 /// Writes a string to the given file descriptor.
 /// @param fd The file descriptor to write to.
 /// @param c The caracter to write.
-/// @return 0 if the string was written successfully, 1 otherwise.
+/// @return 0 if the char was written successfully, 1 otherwise.
 int print_chr(int fd, char c);
 
 #endif  // COMMON_IO_H

@@ -63,17 +63,7 @@ int print_uint(int fd, unsigned int value) {
   return 0;
 }
 
-int print_str(int fd, const char *str) {
-  size_t len = strlen(str);
-  while (len > 0) {
-    ssize_t written = write(fd, str, len);
-    if (written == -1) {
-      return 1;
-    }
-
-    str += (size_t)written;
-    len -= (size_t)written;
-  }
-
+int print_chr(int fd, char c) {
+    if (write(fd, &c, 1) == -1)  return 1;
   return 0;
 }

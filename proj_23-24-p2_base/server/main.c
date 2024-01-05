@@ -7,59 +7,99 @@
 #include <fcntl.h>
 #include <string.h>
 #include "session.h"
+#include <pthread.h>
+#include <semaphore.h>
 
 #include "common/constants.h"
 #include "common/io.h"
 #include "operations.h"
 
-/*
-void *process_file()
-*/
 
-int my_func(session_id *session){
+int session_counter = 0;
+int true_counter = 0;
+int active_threads[MAX_SESSION_COUNT * sizeof(int)];
+pthread_mutex_t session_mutex;
+sem_t semEmpty;
+sem_t semFull;
+session_id** sessions = NULL;
+
+int process_requets(session_id session){
   char OP_CODE;
   int return_value;
   unsigned int event_id;
   size_t num_rows, num_cols, num_seats, xs[MAX_RESERVATION_SIZE], ys[MAX_RESERVATION_SIZE];
   while (1){
-      read(session->req_fd, &OP_CODE, 1);
+      read(session.req_fd, &OP_CODE, 1);
+      sleep(2);
+      printf("opcode : %c, id : %d\n", OP_CODE, session.id);
       switch (OP_CODE){
       case '2':
-        /* pthread_exit */
-        close(session->req_fd);
-        close(session->resp_fd);
-        free(session);
+        close(session.req_fd);
+        close(session.resp_fd);
         return 0;
       case '3':
-        read(session->req_fd, &event_id, sizeof(unsigned int));
-        read(session->req_fd, &num_rows, sizeof(size_t));
-        read(session->req_fd, &num_cols, sizeof(size_t));
+        read(session.req_fd, &event_id, sizeof(unsigned int));
+        read(session.req_fd, &num_rows, sizeof(size_t));
+        read(session.req_fd, &num_cols, sizeof(size_t));
         return_value = ems_create(event_id, num_rows, num_cols);
-        write(session->resp_fd, &return_value, sizeof(int));
+        write(session.resp_fd, &return_value, sizeof(int));
         break;
       case '4':
-        read(session->req_fd, &event_id, sizeof(unsigned int));
-        read(session->req_fd, &num_seats, sizeof(size_t));
-        read(session->req_fd, xs, sizeof(xs));
-        read(session->req_fd, ys, sizeof(ys));
+        read(session.req_fd, &event_id, sizeof(unsigned int));
+        read(session.req_fd, &num_seats, sizeof(size_t));
+        read(session.req_fd, xs, sizeof(xs));
+        read(session.req_fd, ys, sizeof(ys));
         return_value = ems_reserve(event_id, num_seats, xs, ys);
-        write(session->resp_fd, &return_value, sizeof(int));
+        write(session.resp_fd, &return_value, sizeof(int));
         break;
       case '5':
-        read(session->req_fd, &event_id, sizeof(unsigned int));
-        return_value = ems_show(session->resp_fd, event_id);
-        write(session->resp_fd, &return_value, sizeof(int));
+        read(session.req_fd, &event_id, sizeof(unsigned int));
+        return_value = ems_show(session.resp_fd, event_id);
+        write(session.resp_fd, &return_value, sizeof(int));
         break;
       case '6':
-        return_value = ems_list_events(session->resp_fd);
-        write(session->resp_fd, &return_value, sizeof(int));
+        return_value = ems_list_events(session.resp_fd);
+        write(session.resp_fd, &return_value, sizeof(int));
         break;
+      default:
+        printf("invalid op code\n");
       }
     }
 }
 
+void *consumer(){
+  session_id session;
+  int i, j;
+  while (1){
+  sem_wait(&semEmpty);
+  sem_wait(&semFull);
+  pthread_mutex_lock(&session_mutex);
+  for (i = 0; i < MAX_SESSION_COUNT; i++){
+    if(active_threads[i] == 0){
+      active_threads[i] = 1;
+      session = *sessions[0]; //dequeing
+      printf("dentro da thread\n");
+      free(sessions[i]);
+
+      session_counter--;
+      for (j = i; j < session_counter; j++){
+        sessions[j] = sessions[j + 1];
+      }
+      sessions = realloc(sessions, sizeof(session_id*) * sizeof(session_counter));
+      
+      break;
+    }
+  }
+  pthread_mutex_unlock(&session_mutex);
+  process_requets(session);
+  active_threads[i] = 0;
+  true_counter--;
+  printf("all sessions: %d\n", true_counter);
+  sem_post(&semEmpty);
+  }
+}
 int main(int argc, char* argv[]) {
-  int fserv, session_counter = 0;
+  int fserv;
   if (argc < 2 || argc > 3) {
     fprintf(stderr, "Usage: %s\n <pipe_path> [delay]\n", argv[0]);
     return 1;
@@ -84,14 +124,23 @@ int main(int argc, char* argv[]) {
   }
 
   //TODO: Intialize server, create worker threads
-  session_id* sessions[MAX_SESSIONS * sizeof(session_id*)];
+
+  pthread_mutex_init(&session_mutex, NULL);
+  sem_init(&semEmpty, 0, MAX_SESSION_COUNT);
+  sem_init(&semFull, 0, 0);
+
   unlink(argv[1]);
   if (mkfifo (argv[1], 0777) < 0) return 1;
-  if ((fserv = open (argv[1], O_RDONLY | O_CREAT)) < 0){
-    fprintf(stderr, "server pipe failed to open\n");
-    return 1;
+
+  pthread_t worker_th[MAX_SESSION_COUNT];
+
+  for (int i = 0; i < MAX_SESSION_COUNT; i++){
+    active_threads[i] = 0;
+    if(pthread_create(&worker_th[i], NULL, &consumer, NULL) != 0){
+      fprintf(stderr, "failed to create worker thread");
+    }
   }
-  
+
   char path_to_client[sizeof("../client/") + PATH_SIZE];
   char aux[sizeof("../client/")] = "../client/";
   char req_path[PATH_SIZE];
@@ -99,33 +148,39 @@ int main(int argc, char* argv[]) {
 
   while (1) {
     //TODO: Read from pipe
-    while(session_counter == MAX_SESSIONS);
-    // pthread_create
-    strcpy(path_to_client, aux);
-    sessions[session_counter] = malloc(sizeof(session_id));
 
-    sessions[session_counter]->id = session_counter;
-    read(fserv, req_path, PATH_SIZE);
-    if ((sessions[session_counter]->req_fd = open (strcat(path_to_client, req_path), O_RDONLY)) < 0){
-    fprintf(stderr, "request pipe of session: %d, failed to open\n", session_counter);
-    return 1;
+    if ((fserv = open (argv[1], O_RDONLY | O_CREAT)) < 0){
+      fprintf(stderr, "server pipe failed to open\n");
+      return 1;
     }
+
+    pthread_mutex_lock(&session_mutex);
+    sessions = realloc(sessions, sizeof(session_id*) * sizeof(session_counter));
+    sessions[session_counter] = malloc(sizeof(session_id));
+    sessions[session_counter]->id = true_counter % MAX_SESSION_COUNT;
+
+    strcpy(path_to_client, aux);
+    read(fserv, req_path, PATH_SIZE);
+    sessions[session_counter]->req_fd = open (strcat(path_to_client, req_path), O_RDONLY);
+
     strcpy(path_to_client, aux);
     read(fserv, resp_path, PATH_SIZE);
-    if ((sessions[session_counter]->resp_fd = open (strcat(path_to_client, resp_path), O_WRONLY)) < 0){
-    fprintf(stderr, "response pipe of session: %d, failed to open\n", session_counter);
-    return 1;
-    }
+    sessions[session_counter]->resp_fd = open (strcat(path_to_client, resp_path), O_WRONLY);
+    close(fserv);
+
     write(sessions[session_counter]->resp_fd, &session_counter, sizeof(int));
-    //TODO: Write new client to the producer-consumer buffer
-    my_func(sessions[session_counter]);
-    
     session_counter++;
-    break;
+    true_counter++;
+    pthread_mutex_unlock(&session_mutex);
+    //TODO: Write new client to the producer-consumer buffer
+    printf("all sessions: %d\n", true_counter);
+    sem_post(&semFull);
   }
 
   //TODO: Close Server
-  close(fserv);
+  pthread_mutex_destroy(&session_mutex);
+  sem_destroy(&semEmpty);
+  sem_destroy(&semFull);
   ems_terminate();
   return 0;
 }
