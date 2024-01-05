@@ -10,9 +10,10 @@
 #include <semaphore.h>
 #include <pthread.h>
 #include <signal.h>
+#include <errno.h>
 
 #include "../common/constants.h"
-#include "common/io.h"
+#include "../common/io.h"
 #include "operations.h"
 
 static sigset_t signal_mask;
@@ -22,6 +23,11 @@ pthread_mutex_t session_mutex;
 sem_t AvailableThreadsSem;
 sem_t ClientReadySem;
 session_id** sessions = NULL;
+volatile int flag = 0;
+
+void catchSIGUSR1(){
+  flag = 1;
+}
 
 int process_requets(session_id session){
   char OP_CODE;
@@ -69,8 +75,8 @@ int process_requets(session_id session){
 void *consumer(){
   session_id session;
   int i, j;
-  while (1){
   pthread_sigmask(SIG_BLOCK, &signal_mask, NULL);
+  while (1){
   sem_wait(&AvailableThreadsSem);
   sem_wait(&ClientReadySem);
   pthread_mutex_lock(&session_mutex);
@@ -99,11 +105,19 @@ void *consumer(){
 }
 int main(int argc, char* argv[]) {
   int fserv;
+  struct sigaction sa;
+  sa.sa_handler = catchSIGUSR1;
+  sigemptyset(&sa.sa_mask);
+  sa.sa_flags = SA_RESTART;
+  if (sigaction(SIGUSR1, &sa, NULL) == -1) {
+    perror("Failed to set up SIGUSR1 handler");
+  }
   if (argc < 2 || argc > 3) {
     fprintf(stderr, "Usage: %s\n <pipe_path> [delay]\n", argv[0]);
     return 1;
   }
 
+//  signal(SIGUSR1, catchSIGUSR1);
   char* endptr;
   unsigned int state_access_delay_us = STATE_ACCESS_DELAY_US;
   if (argc == 3) {
@@ -147,14 +161,22 @@ int main(int argc, char* argv[]) {
 
   while (1) {
     //TODO: Read from pipe
-
+  
     if ((fserv = open (argv[1], O_RDONLY | O_CREAT)) < 0){
-      fprintf(stderr, "server pipe failed to open\n");
-      return 1;
+      
+      if(errno == EINTR){
+        continue;
+      }else{
+        fprintf(stderr, "server pipe failed to open\n");
+        return 1;
+      }
+    }
+    if (flag == 1){
+      printEvents();
+      flag = 0;
     }
 
     pthread_mutex_lock(&session_mutex);
-    signal(SIGUSR1, catchSIGUSR1);
     sessions = realloc(sessions, sizeof(session_id*) * sizeof(standby_sessions));
     sessions[standby_sessions] = malloc(sizeof(session_id));
 

@@ -6,6 +6,7 @@
 
 #include "../common/io.h"
 #include "eventlist.h"
+#include "operations.h"
 
 static struct EventList* event_list = NULL;
 static unsigned int state_access_delay_us = 0;
@@ -272,15 +273,18 @@ int ems_list_events(int resp_fd) {
   return 0;
 }
 
-void catchSIGUSR1(){
+void printEvents(){
   struct ListNode* current = event_list->head;
 
   its_signal = 1;
 
   while (current){
     printf("Event: %d\n", (current->event)->id);
+    //write(STDOUT_FILENO, "Event: ", sizeof("Event: "));
+    //write(STDOUT_FILENO, &(current->event)->id, sizeof((current->event)->id));
+    //write(STDOUT_FILENO, "\n", sizeof("\n"));
     ems_show(STDOUT_FILENO, (current->event)->id);
-    printf("\n");
+    //printf("\n");
 
     current = current->next;
   }

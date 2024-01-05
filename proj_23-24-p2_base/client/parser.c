@@ -5,8 +5,8 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "common/constants.h"
-#include "common/io.h"
+#include "../common/constants.h"
+#include "../common/io.h"
 
 static void cleanup(int fd) {
   char ch;
