@@ -15,12 +15,11 @@
 #include "operations.h"
 
 
-int session_counter = 0;
-int true_counter = 0;
+int standby_sessions = 0;
 int active_threads[MAX_SESSION_COUNT * sizeof(int)];
 pthread_mutex_t session_mutex;
-sem_t semEmpty;
-sem_t semFull;
+sem_t AvailableThreadsSem;
+sem_t ClientReadySem;
 session_id** sessions = NULL;
 
 int process_requets(session_id session){
@@ -71,21 +70,22 @@ void *consumer(){
   session_id session;
   int i, j;
   while (1){
-  sem_wait(&semEmpty);
-  sem_wait(&semFull);
+  sem_wait(&AvailableThreadsSem);
+  sem_wait(&ClientReadySem);
   pthread_mutex_lock(&session_mutex);
   for (i = 0; i < MAX_SESSION_COUNT; i++){
     if(active_threads[i] == 0){
       active_threads[i] = 1;
       session = *sessions[0]; //dequeing
-      printf("dentro da thread\n");
-      free(sessions[i]);
+      write(session.resp_fd, &i, sizeof(int));
+      session.id = i;
+      free(sessions[0]);
 
-      session_counter--;
-      for (j = i; j < session_counter; j++){
+      standby_sessions--;
+      for (j = 0; j < standby_sessions; j++){
         sessions[j] = sessions[j + 1];
       }
-      sessions = realloc(sessions, sizeof(session_id*) * sizeof(session_counter));
+      sessions = realloc(sessions, sizeof(session_id*) * sizeof(standby_sessions));
       
       break;
     }
@@ -93,9 +93,7 @@ void *consumer(){
   pthread_mutex_unlock(&session_mutex);
   process_requets(session);
   active_threads[i] = 0;
-  true_counter--;
-  printf("all sessions: %d\n", true_counter);
-  sem_post(&semEmpty);
+  sem_post(&AvailableThreadsSem);
   }
 }
 int main(int argc, char* argv[]) {
@@ -126,8 +124,8 @@ int main(int argc, char* argv[]) {
   //TODO: Intialize server, create worker threads
 
   pthread_mutex_init(&session_mutex, NULL);
-  sem_init(&semEmpty, 0, MAX_SESSION_COUNT);
-  sem_init(&semFull, 0, 0);
+  sem_init(&AvailableThreadsSem, 0, MAX_SESSION_COUNT);
+  sem_init(&ClientReadySem, 0, 0);
 
   unlink(argv[1]);
   if (mkfifo (argv[1], 0777) < 0) return 1;
@@ -155,32 +153,28 @@ int main(int argc, char* argv[]) {
     }
 
     pthread_mutex_lock(&session_mutex);
-    sessions = realloc(sessions, sizeof(session_id*) * sizeof(session_counter));
-    sessions[session_counter] = malloc(sizeof(session_id));
-    sessions[session_counter]->id = true_counter % MAX_SESSION_COUNT;
+    sessions = realloc(sessions, sizeof(session_id*) * sizeof(standby_sessions));
+    sessions[standby_sessions] = malloc(sizeof(session_id));
 
     strcpy(path_to_client, aux);
     read(fserv, req_path, PATH_SIZE);
-    sessions[session_counter]->req_fd = open (strcat(path_to_client, req_path), O_RDONLY);
+    sessions[standby_sessions]->req_fd = open (strcat(path_to_client, req_path), O_RDONLY);
 
     strcpy(path_to_client, aux);
     read(fserv, resp_path, PATH_SIZE);
-    sessions[session_counter]->resp_fd = open (strcat(path_to_client, resp_path), O_WRONLY);
+    sessions[standby_sessions]->resp_fd = open (strcat(path_to_client, resp_path), O_WRONLY);
     close(fserv);
 
-    write(sessions[session_counter]->resp_fd, &session_counter, sizeof(int));
-    session_counter++;
-    true_counter++;
+    standby_sessions++;
     pthread_mutex_unlock(&session_mutex);
     //TODO: Write new client to the producer-consumer buffer
-    printf("all sessions: %d\n", true_counter);
-    sem_post(&semFull);
+    sem_post(&ClientReadySem);
   }
 
   //TODO: Close Server
   pthread_mutex_destroy(&session_mutex);
-  sem_destroy(&semEmpty);
-  sem_destroy(&semFull);
+  sem_destroy(&AvailableThreadsSem);
+  sem_destroy(&ClientReadySem);
   ems_terminate();
   return 0;
 }
